@@ -271,6 +271,7 @@ public:
     bool EnableStatistics = false;
     bool EnableTablePgTypes = false;
     bool EnableServerlessExclusiveDynamicNodes = false;
+    bool EnableAddColumsWithDefaults = false;
 
     TShardDeleter ShardDeleter;
 
@@ -282,7 +283,7 @@ public:
 
     TActorId SysPartitionStatsCollector;
 
-    TActorId SVPMigrator;
+    TActorId TabletMigrator;
     TActorId CdcStreamScanFinalizer;
 
     TDuration StatsMaxExecuteTime;
@@ -333,6 +334,11 @@ public:
         return IsServerlessDomain(domain.DomainInfo());
     }
 
+    bool IsServerlessDomainGlobal(TPathId domainPathId, TSubDomainInfo::TConstPtr domainInfo) const {
+        const auto& resourcesDomainId = domainInfo->GetResourcesDomainId();
+        return IsDomainSchemeShard && resourcesDomainId && resourcesDomainId != domainPathId;
+    }
+
     TPathId MakeLocalId(const TLocalPathId& localPathId) const {
         return TPathId(TabletID(), localPathId);
     }
@@ -378,6 +384,8 @@ public:
     void BreakTabletAndRestart(const TActorContext& ctx);
 
     bool IsSchemeShardConfigured() const;
+
+    void InitializeTabletMigrations();
 
     ui64 Generation() const;
 

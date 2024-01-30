@@ -162,7 +162,7 @@ private:
         bool Terminated = false;
     };
 
-    TEnumIndexedVector<EMultiplexingBand, TBandBucket> Buckets_;
+    TEnumIndexedArray<EMultiplexingBand, TBandBucket> Buckets_;
 
     std::atomic<bool> TerminationFlag_ = false;
     TAtomicObject<TError> TerminationError_;
@@ -452,7 +452,7 @@ private:
             }
 
             auto message = CreateRequestCancelationMessage(header);
-            YT_UNUSED_FUTURE(Bus_->Send(std::move(message), NBus::TSendOptions(EDeliveryTrackingLevel::None)));
+            YT_UNUSED_FUTURE(Bus_->Send(std::move(message)));
         }
 
         TFuture<void> SendStreamingPayload(

@@ -67,21 +67,18 @@ constexpr int ErrorSerializationDepthLimit = 16;
 ////////////////////////////////////////////////////////////////////////////////
 
 //! When this guard is set, newly created errors do not have non-deterministic
-//! system attributes and have "datetime" attribute overridden with a given value.
+//! system attributes and have "datetime" and "host" attributes overridden with a given values.
 class TErrorSanitizerGuard
     : public TNonCopyable
 {
 public:
-    using TLocalHostNameSanitizerSignature = TString (TStringBuf);
-    using THostNameSanitizer = TCallback<TLocalHostNameSanitizerSignature>;
-
-    explicit TErrorSanitizerGuard(TInstant datetimeOverride, THostNameSanitizer localHostNameSanitizer);
+    TErrorSanitizerGuard(TInstant datetimeOverride, TSharedRef localHostNameOverride);
     ~TErrorSanitizerGuard();
 
 private:
     const bool SavedEnabled_;
     const TInstant SavedDatetimeOverride_;
-    const THostNameSanitizer SavedLocalHostNameSanitizer_;
+    const TSharedRef SavedLocalHostNameOverride_;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -342,7 +339,7 @@ struct TErrorAdaptor
 // Make these to correctly forward TError to Wrap call.
 template <class TErrorLike, class... TArgs>
     requires
-        std::is_base_of_v<TError, std::remove_cvref_t<TErrorLike>> &&
+        std::derived_from<std::remove_cvref_t<TErrorLike>, TError> &&
         std::constructible_from<TError, TArgs...>
 void ThrowErrorExceptionIfFailed(TErrorLike&& error, TArgs&&... args);
 
