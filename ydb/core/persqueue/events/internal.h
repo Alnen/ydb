@@ -4,6 +4,7 @@
 
 #include <ydb/core/base/row_version.h>
 #include <ydb/core/protos/pqconfig.pb.h>
+#include <ydb/core/persqueue/blob.h>
 #include <ydb/core/persqueue/key.h>
 #include <ydb/core/persqueue/metering_sink.h>
 #include <ydb/core/tablet/tablet_counters.h>
@@ -63,6 +64,18 @@ namespace NPQ {
             , Cached(false)
             , Key(key)
         {}
+    };
+
+    struct TDataKey {
+        TKey Key;
+        ui32 Size;
+        TInstant Timestamp;
+        ui64 CumulativeSize;
+    };
+
+    struct TSeqNoRange {
+        ui64 Min;
+        ui64 Max;
     };
 
     struct TErrorInfo {
@@ -171,6 +184,9 @@ struct TEvPQ {
         EvProvideDirectReadInfo,
         EvCheckPartitionStatusRequest,
         EvCheckPartitionStatusResponse,
+        EvGetWriteInfoRequest,
+        EvGetWriteInfoResponse,
+        EvGetWriteInfoError,
         EvEnd
     };
 
@@ -200,13 +216,14 @@ struct TEvPQ {
             std::optional<TRowVersion> HeartbeatVersion;
         };
 
-        TEvWrite(const ui64 cookie, const ui64 messageNo, const TString& ownerCookie, const TMaybe<ui64> offset, TVector<TMsg> &&msgs, bool isDirectWrite)
+        TEvWrite(const ui64 cookie, const ui64 messageNo, const TString& ownerCookie, const TMaybe<ui64> offset, TVector<TMsg> &&msgs, bool isDirectWrite, std::optional<ui64> initialSeqNo)
         : Cookie(cookie)
         , MessageNo(messageNo)
         , OwnerCookie(ownerCookie)
         , Offset(offset)
         , Msgs(std::move(msgs))
         , IsDirectWrite(isDirectWrite)
+        , InitialSeqNo(initialSeqNo)
         {}
 
         ui64 Cookie;
@@ -215,6 +232,7 @@ struct TEvPQ {
         TMaybe<ui64> Offset;
         TVector<TMsg> Msgs;
         bool IsDirectWrite;
+        std::optional<ui64> InitialSeqNo;
 
     };
 
@@ -923,12 +941,6 @@ struct TEvPQ {
         NKikimrClient::TPersQueueFetchResponse Response;
     };
 
-    struct TEvSourceIdRequest : public TEventPB<TEvSourceIdRequest, NKikimrPQ::TEvSourceIdRequest, EvSourceIdRequest> {
-    };
-
-    struct TEvSourceIdResponse : public TEventPB<TEvSourceIdResponse, NKikimrPQ::TEvSourceIdResponse, EvSourceIdResponse> {
-    };
-
     struct TEvRegisterDirectReadSession : public TEventLocal<TEvRegisterDirectReadSession, EvRegisterDirectReadSession> {
         TEvRegisterDirectReadSession(const NPQ::TReadSessionKey& sessionKey, ui32 tabletGeneration)
             : Session(sessionKey)
@@ -1004,7 +1016,43 @@ struct TEvPQ {
     struct TEvCheckPartitionStatusResponse : public TEventPB<TEvCheckPartitionStatusResponse, NKikimrPQ::TEvCheckPartitionStatusResponse, EvCheckPartitionStatusResponse> {
     };
 
+    struct TEvGetWriteInfoRequest : public TEventLocal<TEvGetWriteInfoRequest, EvGetWriteInfoRequest> {
+        explicit TEvGetWriteInfoRequest(ui32 cookie) :
+            Cookie(cookie)
+        {
+        }
 
+        ui32 Cookie; // ShadowPartitionId
+    };
+
+    struct TEvGetWriteInfoResponse : public TEventLocal<TEvGetWriteInfoResponse, EvGetWriteInfoResponse> {
+        TEvGetWriteInfoResponse(ui32 cookie,
+                                THashMap<TString, NPQ::TSeqNoRange>&& seqNo,
+                                std::deque<NPQ::TDataKey>&& bodyKeys,
+                                TVector<NPQ::TClientBlob>&& head) :
+            Cookie(cookie),
+            SeqNo(std::move(seqNo)),
+            BodyKeys(std::move(bodyKeys)),
+            Head(std::move(head))
+        {
+        }
+
+        ui32 Cookie; // ShadowPartitionId
+        THashMap<TString, NPQ::TSeqNoRange> SeqNo; // SourceId -> (MinSeqNo, MaxSeqNo)
+        std::deque<NPQ::TDataKey> BodyKeys;
+        TVector<NPQ::TClientBlob> Head;
+    };
+
+    struct TEvGetWriteInfoError : public TEventLocal<TEvGetWriteInfoError, EvGetWriteInfoError> {
+        ui32 Cookie; // ShadowPartitionId
+        TString Message;
+
+        TEvGetWriteInfoError(ui32 cookie, TString message) :
+            Cookie(cookie),
+            Message(std::move(message))
+        {
+        }
+    };
 };
 
 } //NKikimr
